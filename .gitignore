@@ -12,3 +12,7 @@ __pycache__/
 .streamlit/
 app_step2_backup.py
 com.jobradar.guardiano.plist
+.codice_github.txt
+.auth_github.log
+.attesa_github
+.guardiano_da_attivare

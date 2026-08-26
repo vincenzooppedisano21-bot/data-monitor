@@ -7,6 +7,7 @@ Per avviarla:  .venv/bin/streamlit run app.py
 
 import html
 from datetime import date, datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
