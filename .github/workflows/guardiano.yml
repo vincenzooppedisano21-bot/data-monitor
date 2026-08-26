@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════════
+#  IL GUARDIANO SU GITHUB
+#
+#  Questo file dice a GitHub: "ogni 15 minuti accendi un computer,
+#  cerca le nuove offerte, mandale via email e spegniti".
+#
+#  Non devi toccarlo. Se vuoi cambiare la frequenza, modifica la
+#  riga "- cron:" qui sotto.
+# ═══════════════════════════════════════════════════════════════
+
+name: Guardiano offerte di lavoro
+
+on:
+  schedule:
+    # ogni 15 minuti (GitHub può ritardare di 10-20 minuti nei momenti di punta)
+    - cron: "*/15 * * * *"
+  # permette di lanciarlo a mano dal sito di GitHub, quando vuoi
+  workflow_dispatch:
+
+# serve per poter salvare l'archivio aggiornato
+permissions:
+  contents: write
+
+# evita che due controlli si sovrappongano
+concurrency:
+  group: guardiano
+  cancel-in-progress: false
+
+jobs:
+  controlla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Scarico il programma e l'archivio
+        uses: actions/checkout@v4
+
+      - name: Preparo Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Installo le librerie
+        run: pip install --quiet -r requirements.txt
+
+      - name: Faccio un giro di controllo
+        env:
+          JOBRADAR_EMAIL: ${{ secrets.JOBRADAR_EMAIL }}
+          JOBRADAR_PASSWORD: ${{ secrets.JOBRADAR_PASSWORD }}
+          JOBRADAR_NOTIFICHE: "1"
+          TZ: Europe/Rome
+        run: python sorveglianza.py
+
+      - name: Salvo le offerte trovate
+        run: |
+          git config user.name "Guardiano Job Radar"
+          git config user.email "guardiano@users.noreply.github.com"
+          git add -f offerte.db
+          if git diff --staged --quiet; then
+            echo "Nessuna offerta nuova: niente da salvare."
+          else
+            git commit -m "Offerte aggiornate — $(date '+%d/%m/%Y %H:%M')"
+            # se nel frattempo è arrivato un altro salvataggio, riprovo
+            git pull --rebase --autostash || true
+            git push
+          fi
+
+      - name: Mostro cosa è successo
+        if: always()
+        run: tail -20 guardiano.log 2>/dev/null || echo "nessun registro"
