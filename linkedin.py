@@ -140,7 +140,13 @@ def cerca(query: str, citta_it: str, giorni: int = 7, massimo: int = 25) -> list
                 "citta": citta_it,
                 "luogo_esteso": luogo_testo,
                 "data_pubblicazione": data_el.get("datetime", "") if data_el else "",
-                "link": (link_el.get("href", "").split("?")[0] if link_el else ""),
+                # Indirizzo ufficiale dell'annuncio.
+                # Uso la forma www.linkedin.com/jobs/view/NUMERO/ perche' e'
+                # quella che LinkedIn stesso usa quando sei collegata.
+                # La forma "it.linkedin.com/jobs/view/titolo-scritto-per-esteso"
+                # e' pensata per chi NON ha un account e da' errore a chi ce l'ha.
+                "link": f"https://www.linkedin.com/jobs/view/{id_offerta}/",
+                "link_visitatore": (link_el.get("href", "").split("?")[0] if link_el else ""),
                 "fonte": "LinkedIn",
             })
 

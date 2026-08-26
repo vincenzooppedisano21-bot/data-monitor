@@ -10,6 +10,7 @@ viaggia mai in chiaro.
 
 import html
 import smtplib
+import urllib.parse
 import ssl
 from datetime import datetime
 from email.message import EmailMessage
@@ -30,6 +31,18 @@ def _colore(match: int) -> str:
     if match >= 25:
         return "#f59e0b"
     return "#64748b"
+
+
+def _link_di_riserva(o: dict) -> str:
+    """
+    Ricerca per titolo e azienda: serve se l'annuncio originale e' stato
+    ritirato o se il link diretto non si apre.
+    """
+    chiave = f"{o.get('titolo','')} {o.get('azienda','')}".strip()
+    if (o.get("fonte") or "") == "LinkedIn":
+        return ("https://www.linkedin.com/jobs/search/?keywords="
+                + urllib.parse.quote(chiave))
+    return "https://www.google.com/search?q=" + urllib.parse.quote(chiave)
 
 
 def _scheda(o: dict) -> str:
@@ -69,6 +82,11 @@ def _scheda(o: dict) -> str:
              style="display:inline-block;background:#4f46e5;color:#ffffff;
                     text-decoration:none;font-size:14px;font-weight:700;
                     padding:10px 20px;border-radius:8px">Candidati subito →</a>
+        </div>
+        <div style="margin-top:9px;font-size:12px;color:#9ca3af">
+          Non si apre?
+          <a href="{html.escape(_link_di_riserva(o), quote=True)}"
+             style="color:#6b7280">cerca l'annuncio per titolo →</a>
         </div>
       </td></tr>
     </table>"""
