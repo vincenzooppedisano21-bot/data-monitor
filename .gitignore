@@ -1,0 +1,14 @@
+# ─── DATI PERSONALI — non devono MAI finire online ───
+segreti.env
+impostazioni.json
+guardiano.log
+guardiano-errori.log
+offerte.db.backup
+
+# ─── File tecnici ───
+.venv/
+__pycache__/
+*.pyc
+.streamlit/
+app_step2_backup.py
+com.jobradar.guardiano.plist
