@@ -10,6 +10,7 @@ Questo file contiene i comandi per accenderlo, spegnerlo e sapere come sta.
 import getpass
 import plistlib
 import subprocess
+import time
 from pathlib import Path
 
 ETICHETTA = "com.jobradar.guardiano"
@@ -68,9 +69,13 @@ def spegni() -> tuple[bool, str]:
                            capture_output=True, text=True)
     if INSTALLATO.exists():
         INSTALLATO.unlink()
-    if attivo():
-        return False, (esito.stderr or "Non sono riuscito a fermarlo").strip()[:200]
-    return True, "Guardiano spento."
+
+    # launchctl impiega un attimo a fermarlo davvero: gli do qualche secondo
+    for _ in range(6):
+        if not attivo():
+            return True, "Guardiano spento."
+        time.sleep(0.5)
+    return False, (esito.stderr or "Non sono riuscito a fermarlo").strip()[:200]
 
 
 def ultime_righe(quante: int = 12) -> str:
