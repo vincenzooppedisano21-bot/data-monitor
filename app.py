@@ -6,6 +6,8 @@ Per avviarla:  .venv/bin/streamlit run app.py
 """
 
 import html
+import json
+import subprocess
 from datetime import date, datetime
 from pathlib import Path
 
@@ -325,7 +327,7 @@ with st.sidebar:
     guardiano_attivo = guardiano.attivo()
     pronta = impostazioni.configurate()
 
-    stato = "🟢 Attivo" if guardiano_attivo else ("🟡 Pronto" if pronta else "🔴 Da configurare")
+    stato = "🟢 Configurate" if pronta else "🔴 Da configurare"
     st.markdown(f"### 📧 Avvisi email — {stato}")
 
     with st.expander("Configura le notifiche", expanded=not pronta):
@@ -400,39 +402,109 @@ vuoi senza toccare il tuo account.
                                 "solo_target": solo_target})
             st.success("Preferenze salvate.")
 
-    # ---- Accensione del guardiano ----
-    if pronta:
-        minuti = st.select_slider(
-            "Controlla ogni", options=[5, 10, 15, 30, 60],
-            value=conf["frequenza_minuti"],
-            format_func=lambda m: f"{m} minuti" if m < 60 else "1 ora")
+    # ---- Stato del guardiano ----
+    st.divider()
+    st.markdown("### 🛰 Guardiano")
 
+    @st.cache_data(ttl=90, show_spinner=False)
+    def stato_su_github():
+        """Chiede a GitHub quando ha lavorato il guardiano l'ultima volta."""
+        try:
+            esito = subprocess.run(
+                ["gh", "run", "list", "--workflow=guardiano.yml", "--limit", "6",
+                 "--json", "createdAt,conclusion,status,event"],
+                capture_output=True, text=True, timeout=20,
+                cwd=str(Path(__file__).parent))
+            if esito.returncode != 0:
+                return None
+            return json.loads(esito.stdout or "[]")
+        except Exception:
+            return None
+
+    giri = stato_su_github()
+
+    if giri is None:
+        st.warning("Non riesco a contattare GitHub per sapere come sta il guardiano. "
+                   "Controlla la connessione.", icon="📡")
+    elif not giri:
+        st.warning("Il guardiano è configurato su GitHub ma non ha ancora "
+                   "eseguito nessun controllo.", icon="⏳")
+    else:
+        ultimo = giri[0]
+        andato_bene = ultimo.get("conclusion") == "success"
+        in_corso = ultimo.get("status") in ("in_progress", "queued")
+
+        if in_corso:
+            st.info("🔄 **Controllo in corso proprio adesso** su GitHub.")
+        elif andato_bene:
+            st.success("🟢 **Attivo su GitHub** — controlla ogni 15 minuti, "
+                       "anche a Mac spento.", icon="✅")
+        else:
+            st.error(f"🔴 L'ultimo controllo è fallito ({ultimo.get('conclusion')}). "
+                     "Apri la scheda Actions su GitHub per capire perché.")
+
+        quando = ultimo["createdAt"]
+        st.caption(f"Ultimo controllo: **{quando[8:10]}/{quando[5:7]} alle "
+                   f"{quando[11:16]}** (ora di Londra)")
+
+        with st.expander("📜 Ultimi controlli"):
+            for g in giri:
+                icona = {"success": "✅", "failure": "❌", "cancelled": "⚪"}.get(
+                    g.get("conclusion"), "🔄")
+                tipo = "automatico" if g.get("event") == "schedule" else "manuale"
+                st.write(f"{icona} {g['createdAt'][11:16]} — {tipo}")
+
+    colonna_a, colonna_b = st.columns(2)
+    with colonna_a:
+        if st.button("🔄 Controlla adesso", width="stretch",
+                     help="Lancia subito un controllo su GitHub senza aspettare."):
+            esito = subprocess.run(
+                ["gh", "workflow", "run", "guardiano.yml"],
+                capture_output=True, text=True, cwd=str(Path(__file__).parent))
+            stato_su_github.clear()
+            if esito.returncode == 0:
+                st.success("Controllo avviato. Tra un paio di minuti avrai l'esito.")
+            else:
+                st.error("Non sono riuscita ad avviarlo: " + esito.stderr[:120])
+    with colonna_b:
+        if st.button("⬇️ Scarica le offerte", width="stretch",
+                     help="Porta sul Mac le offerte trovate da GitHub."):
+            esito = subprocess.run(["git", "pull", "--rebase", "--autostash"],
+                                   capture_output=True, text=True,
+                                   cwd=str(Path(__file__).parent))
+            if esito.returncode == 0:
+                st.success("Archivio aggiornato.")
+                st.rerun()
+            else:
+                st.error(esito.stderr[:150])
+
+    # ---- Guardiano di riserva sul Mac (normalmente spento) ----
+    with st.expander("⚙️ Guardiano di riserva sul Mac (avanzato)"):
+        st.caption(
+            "Il tuo Mac può fare da guardiano al posto di GitHub. "
+            "**Tienilo spento**: con entrambi accesi riceveresti email doppie, "
+            "perché ognuno tiene un elenco separato di ciò che ti ha già segnalato."
+        )
         if guardiano_attivo:
-            if st.button("⏸ Ferma il guardiano", width="stretch"):
+            st.warning("⚠️ Il guardiano locale è ACCESO insieme a quello di GitHub.",
+                       icon="⚠️")
+            if st.button("⏸ Spegni il guardiano locale", type="primary", width="stretch"):
                 ok, messaggio = guardiano.spegni()
                 impostazioni.salva({"notifiche_attive": False})
                 (st.success if ok else st.error)(messaggio)
                 st.rerun()
         else:
-            if st.button("▶️ Attiva il guardiano", type="primary", width="stretch"):
-                # non voglio ricevere un'email con tutto l'archivio esistente
+            st.caption("Stato attuale: **spento** ✔︎ (corretto)")
+            minuti = st.select_slider("Se lo accendessi, controllerebbe ogni",
+                                      options=[5, 10, 15, 30, 60],
+                                      value=conf["frequenza_minuti"],
+                                      format_func=lambda m: f"{m} minuti" if m < 60 else "1 ora")
+            if st.button("▶️ Accendi comunque il guardiano locale", width="stretch"):
                 database.segna_tutte_inviate()
                 impostazioni.salva({"notifiche_attive": True, "frequenza_minuti": minuti})
                 ok, messaggio = guardiano.accendi(minuti)
-                if ok:
-                    st.success(messaggio + " Riceverai un'email solo per le offerte nuove.")
-                else:
-                    st.error(messaggio)
+                (st.success if ok else st.error)(messaggio)
                 st.rerun()
-
-        if conf["ultimo_controllo"]:
-            st.caption(f"Ultimo controllo automatico: "
-                       f"**{data_leggibile(conf['ultimo_controllo'])} "
-                       f"{conf['ultimo_controllo'][11:16]}**")
-        with st.expander("📜 Registro dei controlli"):
-            st.code(guardiano.ultime_righe(15), language=None)
-    else:
-        st.caption("Configura email e password per attivare la sorveglianza automatica.")
 
     st.divider()
     with st.expander("👤 Il mio profilo"):
